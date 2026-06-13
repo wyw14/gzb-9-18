@@ -1,0 +1,18 @@
+[
+  {
+    "id": "e25a9dbc-410c-4413-93ec-0c9a22b3953c",
+    "category": "book",
+    "mysteryTags": [
+      "打算"
+    ],
+    "realName": "打算",
+    "description": "打算",
+    "contact": "打算",
+    "image": "/uploads/df527cd4-9459-40dd-8105-d9cb4d1ab552.jpg",
+    "ownerId": "user_db57z6tmc8",
+    "ownerName": "用户3948",
+    "status": "available",
+    "createdAt": "2026-06-13T19:20:32.138Z",
+    "blurredImage": "/uploads/blur_df527cd4-9459-40dd-8105-d9cb4d1ab552.jpg"
+  }
+]
