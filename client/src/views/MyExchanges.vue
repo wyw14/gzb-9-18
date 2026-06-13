@@ -28,8 +28,14 @@
           <div style="flex:1;text-align:center;">
             <p style="color:#667eea;font-weight:600;margin-bottom:8px;">我的物品</p>
             <div v-if="exc.myItem" style="display:flex;gap:12px;align-items:center;justify-content:center;">
-              <img :src="appendAuth(exc.myItem.image)"
-                   style="width:80px;height:80px;object-fit:cover;border-radius:8px;"/>
+              <div style="position:relative;">
+                <img :src="appendAuth(getItemFirstImage(exc.myItem))"
+                     style="width:80px;height:80px;object-fit:cover;border-radius:8px;"/>
+                <div v-if="getImageCount(exc.myItem) > 1"
+                     style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.6);color:white;padding:1px 6px;border-radius:10px;font-size:10px;">
+                  {{ getImageCount(exc.myItem) }}张
+                </div>
+              </div>
               <div style="text-align:left;">
                 <p style="font-weight:500;">{{ exc.myItem.realName }}</p>
                 <p style="color:#999;font-size:12px;">
@@ -46,8 +52,14 @@
           <div style="flex:1;text-align:center;">
             <p style="color:#f5576c;font-weight:600;margin-bottom:8px;">对方物品</p>
             <div v-if="exc.otherItem" style="display:flex;gap:12px;align-items:center;justify-content:center;">
-              <img :src="appendAuth(exc.otherItem.image)"
-                   style="width:80px;height:80px;object-fit:cover;border-radius:8px;"/>
+              <div style="position:relative;">
+                <img :src="appendAuth(getItemFirstImage(exc.otherItem))"
+                     style="width:80px;height:80px;object-fit:cover;border-radius:8px;"/>
+                <div v-if="getImageCount(exc.otherItem) > 1"
+                     style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.6);color:white;padding:1px 6px;border-radius:10px;font-size:10px;">
+                  {{ getImageCount(exc.otherItem) }}张
+                </div>
+              </div>
               <div style="text-align:left;">
                 <p style="font-weight:500;">{{ exc.otherItem.realName }}</p>
                 <p style="color:#999;font-size:12px;">
@@ -76,6 +88,22 @@ import { userStore } from '../store/user.js'
 
 const exchanges = ref([])
 const loading = ref(true)
+
+function getItemFirstImage(item) {
+  if (!item) return ''
+  if (item.images && item.images.length > 0) {
+    return item.images[0]
+  }
+  return item.image || ''
+}
+
+function getImageCount(item) {
+  if (!item) return 0
+  if (item.images && Array.isArray(item.images)) {
+    return item.images.length
+  }
+  return 1
+}
 
 function formatDate(dateStr) {
   const date = new Date(dateStr)

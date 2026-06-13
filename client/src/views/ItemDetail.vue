@@ -10,17 +10,40 @@
     </router-link>
   </div>
 
-  <div v-else class="card" style="max-width:900px;margin:0 auto;">
+  <div v-else class="card" style="max-width:960px;margin:0 auto;">
     <div class="grid grid-2">
       <div>
-        <div style="width:100%;aspect-ratio:1;border-radius:12px;overflow:hidden;background:#f0f0f0;">
+        <div class="main-image-wrapper">
           <img
-            :src="appendAuth(item.image)"
+            :src="appendAuth(currentImageUrl)"
             alt="物品图片"
-            style="width:100%;height:100%;object-fit:cover;"/>
+            class="main-image"/>
+          <div v-if="displayImages.length > 1" class="image-nav">
+            <button class="nav-btn prev-btn" @click="prevImage" :disabled="currentImageIndex === 0">
+              ‹
+            </button>
+            <button class="nav-btn next-btn" @click="nextImage" :disabled="currentImageIndex === displayImages.length - 1">
+              ›
+            </button>
+          </div>
+          <div v-if="displayImages.length > 1" class="image-counter">
+            {{ currentImageIndex + 1 }} / {{ displayImages.length }}
+          </div>
+        </div>
+        <div v-if="displayImages.length > 1" class="thumbnails">
+          <div
+            v-for="(img, index) in displayImages"
+            :key="index"
+            :class="['thumbnail-item', { active: index === currentImageIndex }]"
+            @click="currentImageIndex = index">
+            <img :src="appendAuth(img)" class="thumbnail-img"/>
+          </div>
         </div>
         <div v-if="!item.revealInfo" style="margin-top:12px;text-align:center;color:#666;font-size:13px;">
-          图片模糊处理中，交换成功后显示原图
+          图片模糊处理中，交换成功后显示原图相册
+        </div>
+        <div v-else style="margin-top:12px;text-align:center;color:#52c41a;font-size:13px;font-weight:500;">
+          ✓ 已解锁原图相册
         </div>
       </div>
 
@@ -68,9 +91,15 @@
              style="background:#f5f7fa;margin-bottom:20px;">
           <h4 style="margin-bottom:12px;">交换信息</h4>
           <div style="display:flex;gap:16px;align-items:center;">
-            <img :src="appendAuth(item.exchange.otherItem.image)"
-                 style="width:80px;height:80px;object-fit:cover;border-radius:8px;"/>
-            <div style="flex:1;">
+            <div style="position:relative;width:80px;height:80px;flex-shrink:0;">
+              <img :src="appendAuth(getOtherItemFirstImage(item.exchange.otherItem))"
+                   style="width:80px;height:80px;object-fit:cover;border-radius:8px;"/>
+              <div v-if="getOtherItemImageCount(item.exchange.otherItem) > 1"
+                   style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.6);color:white;padding:1px 6px;border-radius:10px;font-size:10px;">
+                {{ getOtherItemImageCount(item.exchange.otherItem) }}张
+              </div>
+            </div>
+            <div style="flex:1;min-width:0;">
               <p style="font-weight:500;margin-bottom:4px;">{{ item.exchange.otherItem.realName }}</p>
               <p style="color:#666;font-size:13px;margin-bottom:4px;">
                 发布者：{{ item.exchange.otherItem.ownerName }}
@@ -106,7 +135,7 @@
             {{ exchanging ? '交换申请中...' : '确认交换' }}
           </button>
           <p style="color:#999;font-size:12px;text-align:center;margin-top:8px;">
-            确认交换后，双方的真实信息和联系方式将互相公开
+            确认交换后，双方的真实信息和原图相册将互相公开
           </p>
         </div>
 
@@ -119,7 +148,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getItemDetail, getMyItems, createExchange, appendAuth } from '../api/index.js'
 import { userStore } from '../store/user.js'
@@ -132,6 +161,7 @@ const myItems = ref([])
 const myItemsLoading = ref(true)
 const selectedMyItemId = ref('')
 const exchanging = ref(false)
+const currentImageIndex = ref(0)
 
 const categories = {
   book: '书籍类',
@@ -150,8 +180,66 @@ const availableItems = computed(function() {
   return myItems.value.filter(function(i) { return i.status === 'available' })
 })
 
+const displayImages = computed(function() {
+  if (!item.value) return []
+  if (item.value.revealInfo) {
+    if (item.value.images && Array.isArray(item.value.images) && item.value.images.length > 0) {
+      return item.value.images
+    }
+    if (item.value.image) {
+      return [item.value.image]
+    }
+    return []
+  } else {
+    if (item.value.images && Array.isArray(item.value.images) && item.value.images.length > 0) {
+      return item.value.images
+    }
+    if (item.value.image) {
+      return [item.value.image]
+    }
+    return []
+  }
+})
+
+const currentImageUrl = computed(function() {
+  if (displayImages.value.length === 0) return ''
+  return displayImages.value[currentImageIndex.value] || displayImages.value[0]
+})
+
+watch(item, function() {
+  currentImageIndex.value = 0
+})
+
 function getCategoryName(key) {
   return categories[key] || key
+}
+
+function getOtherItemFirstImage(otherItem) {
+  if (!otherItem) return ''
+  if (otherItem.images && otherItem.images.length > 0) {
+    return otherItem.images[0]
+  }
+  return otherItem.image || ''
+}
+
+function getOtherItemImageCount(otherItem) {
+  if (!otherItem) return 0
+  if (otherItem.images && Array.isArray(otherItem.images)) {
+    return otherItem.images.length
+  }
+  return 1
+}
+
+function prevImage() {
+  if (currentImageIndex.value > 0) {
+    currentImageIndex.value--
+  }
+}
+
+function nextImage() {
+  if (currentImageIndex.value < displayImages.value.length - 1) {
+    currentImageIndex.value++
+  }
 }
 
 async function loadItem() {
@@ -177,13 +265,13 @@ async function loadMyItems() {
 }
 
 async function handleExchange() {
-  if (!confirm('确定要交换吗？交换后双方的真实信息将互相公开。')) {
+  if (!confirm('确定要交换吗？交换后双方的真实信息和原图相册将互相公开。')) {
     return
   }
   exchanging.value = true
   try {
     await createExchange(selectedMyItemId.value, route.params.id)
-    alert('交换成功！双方的真实信息已互相公开，请通过联系方式联系对方完成交换。')
+    alert('交换成功！双方的真实信息和原图相册已互相公开，请通过联系方式联系对方完成交换。')
     loadItem()
   } catch (e) {
     alert('交换失败：' + (e.response && e.response.data ? e.response.data.error : e.message))
@@ -197,3 +285,106 @@ onMounted(function() {
   loadMyItems()
 })
 </script>
+
+<style scoped>
+.main-image-wrapper {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f0f0f0;
+  position: relative;
+}
+
+.main-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.nav-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  margin: 0 8px;
+  transition: background 0.2s;
+}
+
+.nav-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.image-counter {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+}
+
+.thumbnails {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.thumbnail-item {
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background: #f0f0f0;
+  transition: border-color 0.2s;
+}
+
+.thumbnail-item:hover {
+  border-color: #667eea;
+}
+
+.thumbnail-item.active {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+}
+
+.thumbnail-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+</style>

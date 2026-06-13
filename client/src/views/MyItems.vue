@@ -3,7 +3,7 @@
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
       <div>
         <h1 style="color:white;margin-bottom:8px;">我的物品</h1>
-        <p style="color:rgba(255,255,255,0.8);">管理你发布的盲盒</p>
+        <p style="color:rgba(255,255,255,0.8);">管理你发布的盲盒相册</p>
       </div>
       <router-link to="/publish">
         <button class="btn btn-primary">发布新盲盒</button>
@@ -16,7 +16,7 @@
 
     <div v-else-if="items.length === 0" class="empty-state card">
       <h2>你还没有发布盲盒</h2>
-      <p style="margin-bottom:20px;">发布一个盲盒，开启交换之旅吧！</p>
+      <p style="margin-bottom:20px;">发布一个盲盒相册，开启交换之旅吧！</p>
       <router-link to="/publish">
         <button class="btn btn-primary">立即发布</button>
       </router-link>
@@ -25,12 +25,16 @@
     <div v-else class="grid grid-3">
       <div v-for="item in items" :key="item.id" class="card" style="padding:0;overflow:hidden;">
         <div style="width:100%;height:200px;overflow:hidden;background:#f0f0f0;position:relative;">
-          <img :src="appendAuth(item.image)" alt="物品图片"
+          <img :src="appendAuth(getItemFirstImage(item))" alt="物品图片"
                style="width:100%;height:100%;object-fit:cover;"/>
           <div style="position:absolute;top:12px;right:12px;">
             <span :class="item.status === 'available' ? 'badge badge-available' : 'badge badge-exchanged'">
               {{ item.status === 'available' ? '可交换' : '已交换' }}
             </span>
+          </div>
+          <div v-if="getImageCount(item) > 1" 
+               style="position:absolute;bottom:12px;right:12px;background:rgba(0,0,0,0.6);color:white;padding:4px 10px;border-radius:20px;font-size:12px;">
+            📷 {{ getImageCount(item) }} 张
           </div>
         </div>
         <div style="padding:16px;">
@@ -69,6 +73,20 @@ import { userStore } from '../store/user.js'
 const items = ref([])
 const loading = ref(true)
 
+function getItemFirstImage(item) {
+  if (item.images && item.images.length > 0) {
+    return item.images[0]
+  }
+  return item.image || ''
+}
+
+function getImageCount(item) {
+  if (item.images && Array.isArray(item.images)) {
+    return item.images.length
+  }
+  return 1
+}
+
 async function loadItems() {
   loading.value = true
   try {
@@ -81,7 +99,7 @@ async function loadItems() {
 }
 
 async function handleDelete(item) {
-  if (!confirm('确定要删除这个盲盒吗？')) {
+  if (!confirm('确定要删除这个盲盒相册吗？')) {
     return
   }
   try {

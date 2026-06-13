@@ -48,15 +48,50 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+function getItemImages(item) {
+  if (item.images && Array.isArray(item.images) && item.images.length > 0) {
+    return item.images;
+  }
+  if (item.image) {
+    return [item.image];
+  }
+  return [];
+}
+
+function getItemBlurredImages(item) {
+  if (item.blurredImages && Array.isArray(item.blurredImages) && item.blurredImages.length > 0) {
+    return item.blurredImages;
+  }
+  if (item.blurredImage) {
+    return [item.blurredImage];
+  }
+  return [];
+}
+
 function getPublicImage(item) {
-  if (item && item.blurredImage) {
-    const blurredFilename = path.basename(item.blurredImage);
+  const blurredImages = getItemBlurredImages(item);
+  if (blurredImages.length > 0) {
+    const firstBlurred = blurredImages[0];
+    const blurredFilename = path.basename(firstBlurred);
     const blurredPath = path.join(UPLOADS_DIR, blurredFilename);
     if (fs.existsSync(blurredPath)) {
-      return item.blurredImage;
+      return firstBlurred;
     }
   }
   return PLACEHOLDER_IMAGE;
+}
+
+function getPublicImages(item) {
+  const blurredImages = getItemBlurredImages(item);
+  const validBlurred = blurredImages.filter(img => {
+    const blurredFilename = path.basename(img);
+    const blurredPath = path.join(UPLOADS_DIR, blurredFilename);
+    return fs.existsSync(blurredPath);
+  });
+  if (validBlurred.length > 0) {
+    return validBlurred;
+  }
+  return [PLACEHOLDER_IMAGE];
 }
 
 async function generateBlurredImage(originalPath) {
@@ -77,6 +112,19 @@ async function generateBlurredImage(originalPath) {
   return '/uploads/' + blurredFilename;
 }
 
+async function generateBlurredImages(originalPaths) {
+  const blurredPaths = [];
+  for (const originalPath of originalPaths) {
+    try {
+      const blurredPath = await generateBlurredImage(originalPath);
+      blurredPaths.push(blurredPath);
+    } catch (err) {
+      console.error('生成模糊图片失败:', err);
+    }
+  }
+  return blurredPaths;
+}
+
 app.get('/api/items', (req, res) => {
   const { userId } = req.query;
   let items = readItems();
@@ -90,6 +138,7 @@ app.get('/api/items', (req, res) => {
     category: item.category,
     mysteryTags: item.mysteryTags,
     image: getPublicImage(item),
+    images: getPublicImages(item),
     createdAt: item.createdAt,
     status: item.status
   }));
@@ -104,7 +153,11 @@ app.get('/api/items/my', (req, res) => {
   }
 
   const items = readItems();
-  const myItems = items.filter(item => item.ownerId === userId);
+  const myItems = items.filter(item => item.ownerId === userId).map(item => ({
+    ...item,
+    images: getItemImages(item),
+    blurredImages: getItemBlurredImages(item)
+  }));
   res.json(myItems);
 });
 
@@ -118,6 +171,12 @@ app.get('/api/items/:id', (req, res) => {
     return res.status(404).json({ error: '物品不存在' });
   }
 
+  const itemWithImages = {
+    ...item,
+    images: getItemImages(item),
+    blurredImages: getItemBlurredImages(item)
+  };
+
   const exchanges = readExchanges();
   const relatedExchange = exchanges.find(e =>
     (e.item1Id === id || e.item2Id === id) && e.status === 'completed'
@@ -126,17 +185,22 @@ app.get('/api/items/:id', (req, res) => {
   if (relatedExchange) {
     const otherItemId = relatedExchange.item1Id === id ? relatedExchange.item2Id : relatedExchange.item1Id;
     const otherItem = items.find(i => i.id === otherItemId);
+    const otherItemWithImages = otherItem ? {
+      ...otherItem,
+      images: getItemImages(otherItem),
+      blurredImages: getItemBlurredImages(otherItem)
+    } : null;
 
     const isOwner = item.ownerId === userId;
     const isOtherOwner = otherItem && otherItem.ownerId === userId;
 
     if (isOwner || isOtherOwner) {
       return res.json({
-        ...item,
+        ...itemWithImages,
         revealInfo: true,
         exchange: {
           id: relatedExchange.id,
-          otherItem: otherItem,
+          otherItem: otherItemWithImages,
           contact: isOwner ? relatedExchange.item2Contact : relatedExchange.item1Contact,
           status: relatedExchange.status
         }
@@ -153,17 +217,22 @@ app.get('/api/items/:id', (req, res) => {
     if (pendingExchange) {
       const otherItemId = pendingExchange.item1Id === id ? pendingExchange.item2Id : pendingExchange.item1Id;
       const otherItem = items.find(i => i.id === otherItemId);
+      const otherItemWithImages = otherItem ? {
+        ...otherItem,
+        images: getItemImages(otherItem),
+        blurredImages: getItemBlurredImages(otherItem)
+      } : null;
       return res.json({
-        ...item,
+        ...itemWithImages,
         revealInfo: true,
         exchange: {
           id: pendingExchange.id,
-          otherItem: otherItem,
+          otherItem: otherItemWithImages,
           status: pendingExchange.status
         }
       });
     }
-    return res.json({ ...item, revealInfo: true });
+    return res.json({ ...itemWithImages, revealInfo: true });
   }
 
   res.json({
@@ -171,32 +240,47 @@ app.get('/api/items/:id', (req, res) => {
     category: item.category,
     mysteryTags: item.mysteryTags,
     image: getPublicImage(item),
+    images: getPublicImages(item),
     createdAt: item.createdAt,
     status: item.status,
     revealInfo: false
   });
 });
 
-app.post('/api/items', upload.single('image'), async (req, res) => {
+app.post('/api/items', upload.array('images', 20), async (req, res) => {
   const { category, mysteryTags, realName, description, contact, ownerId, ownerName } = req.body;
 
   if (!category || !mysteryTags || !realName || !contact || !ownerId) {
-    if (req.file) {
-      try { fs.unlinkSync(req.file.path); } catch (e) {}
+    if (req.files && req.files.length > 0) {
+      req.files.forEach(file => {
+        try { fs.unlinkSync(file.path); } catch (e) {}
+      });
     }
     return res.status(400).json({ error: '缺少必要字段' });
   }
 
-  if (!req.file) {
-    return res.status(400).json({ error: '请上传物品图片' });
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: '请上传至少一张物品图片' });
   }
 
-  let blurredImagePath;
+  const originalPaths = req.files.map(file => file.path);
+  const imageUrls = req.files.map(file => '/uploads/' + file.filename);
+
+  let blurredImagePaths;
   try {
-    blurredImagePath = await generateBlurredImage(req.file.path);
+    blurredImagePaths = await generateBlurredImages(originalPaths);
   } catch (err) {
     console.error('生成模糊图片失败:', err);
-    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    originalPaths.forEach(p => {
+      try { fs.unlinkSync(p); } catch (e) {}
+    });
+    return res.status(500).json({ error: '图片处理失败，请换一张图片重试' });
+  }
+
+  if (blurredImagePaths.length === 0) {
+    originalPaths.forEach(p => {
+      try { fs.unlinkSync(p); } catch (e) {}
+    });
     return res.status(500).json({ error: '图片处理失败，请换一张图片重试' });
   }
 
@@ -208,8 +292,10 @@ app.post('/api/items', upload.single('image'), async (req, res) => {
     realName,
     description: description || '',
     contact,
-    image: '/uploads/' + req.file.filename,
-    blurredImage: blurredImagePath,
+    image: imageUrls[0],
+    images: imageUrls,
+    blurredImage: blurredImagePaths[0],
+    blurredImages: blurredImagePaths,
     ownerId,
     ownerName: ownerName || '匿名用户',
     status: 'available',
@@ -277,12 +363,16 @@ app.post('/api/exchanges', (req, res) => {
   if (updateIndex2 !== -1) items[updateIndex2].status = 'exchanged';
   writeItems(items);
 
+  const targetItemWithImages = {
+    ...targetItem,
+    images: getItemImages(targetItem),
+    blurredImages: getItemBlurredImages(targetItem),
+    revealInfo: true
+  };
+
   res.status(201).json({
     exchange: newExchange,
-    targetItem: {
-      ...targetItem,
-      revealInfo: true
-    }
+    targetItem: targetItemWithImages
   });
 });
 
@@ -301,10 +391,21 @@ app.get('/api/exchanges/my', (req, res) => {
       const item1 = items.find(i => i.id === e.item1Id);
       const item2 = items.find(i => i.id === e.item2Id);
       const isItem1Owner = e.item1Owner === userId;
+      const myItem = isItem1Owner ? item1 : item2;
+      const otherItem = isItem1Owner ? item2 : item1;
+
       return {
         ...e,
-        myItem: isItem1Owner ? item1 : item2,
-        otherItem: isItem1Owner ? item2 : item1,
+        myItem: myItem ? {
+          ...myItem,
+          images: getItemImages(myItem),
+          blurredImages: getItemBlurredImages(myItem)
+        } : null,
+        otherItem: otherItem ? {
+          ...otherItem,
+          images: getItemImages(otherItem),
+          blurredImages: getItemBlurredImages(otherItem)
+        } : null,
         otherContact: isItem1Owner ? e.item2Contact : e.item1Contact
       };
     });
@@ -333,18 +434,22 @@ app.delete('/api/items/:id', (req, res) => {
     return res.status(400).json({ error: '物品正在交换中，无法删除' });
   }
 
-  const originalFilePath = path.join(UPLOADS_DIR, path.basename(item.image));
-  const blurredFilePath = item.blurredImage
-    ? path.join(UPLOADS_DIR, path.basename(item.blurredImage))
-    : null;
+  const images = getItemImages(item);
+  const blurredImages = getItemBlurredImages(item);
 
-  try {
-    if (fs.existsSync(originalFilePath)) fs.unlinkSync(originalFilePath);
-  } catch (e) { console.error('删除原图失败:', e); }
+  images.forEach(img => {
+    const filePath = path.join(UPLOADS_DIR, path.basename(img));
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) { console.error('删除原图失败:', e); }
+  });
 
-  try {
-    if (blurredFilePath && fs.existsSync(blurredFilePath)) fs.unlinkSync(blurredFilePath);
-  } catch (e) { console.error('删除模糊图失败:', e); }
+  blurredImages.forEach(img => {
+    const filePath = path.join(UPLOADS_DIR, path.basename(img));
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) { console.error('删除模糊图失败:', e); }
+  });
 
   items.splice(itemIndex, 1);
   writeItems(items);
@@ -365,21 +470,41 @@ app.get('/uploads/:filename', async (req, res) => {
   }
 
   const items = readItems();
-  const item = items.find(i => path.basename(i.image) === filename);
+  let targetItem = null;
+  let isBlurred = false;
 
-  if (!item) {
+  for (const item of items) {
+    const images = getItemImages(item);
+    const blurredImages = getItemBlurredImages(item);
+
+    if (images.some(img => path.basename(img) === filename)) {
+      targetItem = item;
+      break;
+    }
+    if (blurredImages.some(img => path.basename(img) === filename)) {
+      targetItem = item;
+      isBlurred = true;
+      break;
+    }
+  }
+
+  if (!targetItem) {
     return res.redirect(PLACEHOLDER_IMAGE);
+  }
+
+  if (isBlurred) {
+    return res.sendFile(filePath);
   }
 
   const { userId } = req.query;
 
-  if (item.ownerId === userId) {
+  if (targetItem.ownerId === userId) {
     return res.sendFile(filePath);
   }
 
   const exchanges = readExchanges();
   const relatedExchange = exchanges.find(e =>
-    (e.item1Id === item.id || e.item2Id === item.id) && e.status === 'completed'
+    (e.item1Id === targetItem.id || e.item2Id === targetItem.id) && e.status === 'completed'
   );
 
   if (relatedExchange) {
@@ -390,8 +515,10 @@ app.get('/uploads/:filename', async (req, res) => {
     }
   }
 
-  if (item.blurredImage) {
-    const blurredFilename = path.basename(item.blurredImage);
+  const blurredImages = getItemBlurredImages(targetItem);
+  if (blurredImages.length > 0) {
+    const firstBlurred = blurredImages[0];
+    const blurredFilename = path.basename(firstBlurred);
     const blurredPath = path.join(UPLOADS_DIR, blurredFilename);
     if (fs.existsSync(blurredPath)) {
       return res.sendFile(blurredPath);
@@ -400,11 +527,13 @@ app.get('/uploads/:filename', async (req, res) => {
 
   try {
     const blurredUrl = await generateBlurredImage(filePath);
-    item.blurredImage = blurredUrl;
     const allItems = readItems();
-    const idx = allItems.findIndex(i => i.id === item.id);
+    const idx = allItems.findIndex(i => i.id === targetItem.id);
     if (idx !== -1) {
-      allItems[idx].blurredImage = blurredUrl;
+      const currentBlurred = getItemBlurredImages(allItems[idx]);
+      currentBlurred.push(blurredUrl);
+      allItems[idx].blurredImages = currentBlurred;
+      allItems[idx].blurredImage = currentBlurred[0];
       writeItems(allItems);
     }
     const blurredFilename = path.basename(blurredUrl);

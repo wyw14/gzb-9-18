@@ -1,7 +1,7 @@
 <template>
   <div class="card" style="max-width:700px;margin:0 auto;">
-    <h1 style="margin-bottom:8px;">发布盲盒</h1>
-    <p style="color:#666;margin-bottom:24px;">填写以下信息，发布你的神秘盲盒</p>
+    <h1 style="margin-bottom:8px;">发布盲盒相册</h1>
+    <p style="color:#666;margin-bottom:24px;">填写以下信息，发布你的神秘盲盒相册</p>
 
     <form @submit.prevent="handleSubmit">
       <div class="form-group">
@@ -34,12 +34,16 @@
       </div>
 
       <div class="form-group">
-        <label>物品图片 *</label>
-        <input type="file" accept="image/*" @change="handleFileChange" required />
-        <div v-if="previewUrl" style="margin-top:12px;">
-          <img :src="previewUrl" style="max-width:200px;border-radius:8px;"/>
+        <label>物品图片 *（可上传多张，最多20张）</label>
+        <input type="file" accept="image/*" multiple @change="handleFileChange" />
+        <small style="color:#999;">第一张为封面图，所有图片会模糊处理展示给其他用户，交换成功后才会显示原图</small>
+        <div v-if="previewUrls.length > 0" class="preview-grid">
+          <div v-for="(url, index) in previewUrls" :key="index" class="preview-item">
+            <img :src="url" class="preview-img"/>
+            <button type="button" class="remove-btn" @click="removeImage(index)">×</button>
+            <div v-if="index === 0" class="cover-badge">封面</div>
+          </div>
         </div>
-        <small style="color:#999;">图片会模糊处理展示给其他用户，交换成功后才会显示原图</small>
       </div>
 
       <div class="form-group">
@@ -49,7 +53,7 @@
 
       <div style="display:flex;gap:12px;">
         <button type="submit" class="btn btn-primary" style="flex:1;" :disabled="submitting">
-          {{ submitting ? '发布中...' : '发布盲盒' }}
+          {{ submitting ? '发布中...' : '发布盲盒相册' }}
         </button>
         <router-link to="/" style="flex:1;">
           <button type="button" class="btn btn-secondary" style="width:100%;">返回首页</button>
@@ -75,8 +79,8 @@ const form = ref({
 })
 
 const tagsInput = ref('')
-const imageFile = ref(null)
-const previewUrl = ref('')
+const imageFiles = ref([])
+const previewUrls = ref([])
 const submitting = ref(false)
 
 const mysteryTags = computed(function() {
@@ -87,11 +91,27 @@ const mysteryTags = computed(function() {
 })
 
 function handleFileChange(e) {
-  const file = e.target.files[0]
-  if (file) {
-    imageFile.value = file
-    previewUrl.value = URL.createObjectURL(file)
+  const files = Array.from(e.target.files)
+  if (files.length === 0) return
+
+  const totalCount = imageFiles.value.length + files.length
+  if (totalCount > 20) {
+    alert('最多只能上传20张图片')
+    return
   }
+
+  files.forEach(file => {
+    if (!file.type.startsWith('image/')) return
+    imageFiles.value.push(file)
+    previewUrls.value.push(URL.createObjectURL(file))
+  })
+
+  e.target.value = ''
+}
+
+function removeImage(index) {
+  imageFiles.value.splice(index, 1)
+  previewUrls.value.splice(index, 1)
 }
 
 async function handleSubmit() {
@@ -99,8 +119,8 @@ async function handleSubmit() {
     alert('请至少填写一个神秘标签')
     return
   }
-  if (!imageFile.value) {
-    alert('请上传物品图片')
+  if (imageFiles.value.length === 0) {
+    alert('请至少上传一张物品图片')
     return
   }
 
@@ -114,7 +134,10 @@ async function handleSubmit() {
     formData.append('contact', form.value.contact)
     formData.append('ownerId', userStore.user.id)
     formData.append('ownerName', userStore.user.name)
-    formData.append('image', imageFile.value)
+
+    imageFiles.value.forEach(file => {
+      formData.append('images', file)
+    })
 
     await createItem(formData)
     alert('发布成功！')
@@ -126,3 +149,62 @@ async function handleSubmit() {
   }
 }
 </script>
+
+<style scoped>
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.preview-item {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f0f0f0;
+}
+
+.preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.remove-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+.cover-badge {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  color: white;
+  font-size: 11px;
+  padding: 12px 4px 4px;
+  text-align: center;
+}
+</style>

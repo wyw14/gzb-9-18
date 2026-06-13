@@ -37,6 +37,10 @@
                 {{ item.status === 'available' ? '可交换' : '已交换' }}
               </span>
             </div>
+            <div v-if="getImageCount(item) > 1" 
+                 style="position:absolute;bottom:12px;right:12px;background:rgba(0,0,0,0.6);color:white;padding:4px 10px;border-radius:20px;font-size:12px;">
+              📷 {{ getImageCount(item) }} 张
+            </div>
           </div>
           <div style="padding:16px;">
             <h3 style="margin-bottom:8px;font-size:16px;">{{ getCategoryName(item.category) }}</h3>
@@ -74,6 +78,13 @@ const categories = {
 
 function getCategoryName(key) {
   return categories[key] || key
+}
+
+function getImageCount(item) {
+  if (item.images && Array.isArray(item.images)) {
+    return item.images.length
+  }
+  return 1
 }
 
 function formatDate(dateStr) {
